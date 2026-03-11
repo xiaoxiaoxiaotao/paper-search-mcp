@@ -1,0 +1,30 @@
+[project]
+name = "paper-search-mcp"
+version = "0.1.0"
+description = "MCP server for searching, reading, and organizing research papers from Semantic Scholar and arXiv"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "backoff>=2.2.1",
+    "mcp>=1.6.0",
+    "pypdf>=4.2.0",
+    "requests>=2.32.3",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11.0",
+]
+
+[project.scripts]
+paper-search-mcp = "paper_search_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["paper_search_mcp"]
+
+[tool.uv]
+package = true
