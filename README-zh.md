@@ -99,7 +99,7 @@ pip install .
 如果后续发布到 Git 仓库，也可以直接从仓库安装：
 
 ```bash
-pip install git+https://github.com/<your-org>/paper-search-mcp.git
+pip install https://github.com/xiaoxiaoxiaotao/paper-search-mcp.git
 ```
 
 如果以后发布到 PyPI，运行入口仍然是 `paper-search-mcp`。
@@ -135,13 +135,22 @@ uv run paper-search-mcp
 
 ```json
 {
-  "mcpServers": {
-    "paper-search": {
-      "command": "uv",
-      "args": ["run", "paper-search-mcp"],
-      "cwd": "/home/tao/code/projects/paper-search-mcp"
-    }
-  }
+	"servers": {
+		"paper-search": {
+			"type": "stdio",
+			"command": "uv",
+			"args": [
+				"run",
+				"paper-search-mcp",
+				"-no-sync"
+			],
+			"cwd": "/home/tao/code/projects/paper-search-mcp",
+			"env": {
+				"S2_API_KEY": "${S2_API_KEY}"
+			}
+		}
+	},
+	"inputs": []
 }
 ```
 
@@ -180,20 +189,6 @@ uv run paper-search-mcp
 }
 ```
 
-如果 MCP Client 需要固定到当前工作目录下的虚拟环境，也可以显式写成：
-
-```json
-{
-  "mcpServers": {
-    "paper-search": {
-      "command": "uv",
-      "args": ["run", "paper-search-mcp"],
-      "cwd": "/home/tao/code/projects/paper-search-mcp"
-    }
-  }
-}
-```
-
 ## 设计说明
 
 - Semantic Scholar 适合找高引用、较成熟的相关工作
@@ -204,7 +199,4 @@ uv run paper-search-mcp
 
 ## 后续可扩展方向
 
-- 支持 DOI / PMID / ACL Anthology / OpenAlex
 - 增加引用网络和相似论文检索
-- 增加 BibTeX 导出
-- 增加章节级 PDF 文本切分和缓存
