@@ -119,28 +119,9 @@ pip install .
 
 To install directly from a Git repository:
 
-
-
-If you publish to PyPI later, the runtime shape stays the same and the MCP entrypoint remains `paper-search-mcp`.
-
-### Deploy With Docker
-
-Build the image:
-
 ```bash
-docker build -t paper-search-mcp .
+pip install https://github.com/xiaoxiaoxiaotao/paper-search-mcp.git
 ```
-
-Run the MCP server over stdio:
-
-```bash
-docker run -i --rm \
-  -e S2_API_KEY=your_key_here \
-  -v paper-search-cache:/root/.cache/paper-search-mcp \
-  paper-search-mcp
-```
-
-The volume mount keeps the PDF cache across container restarts.
 
 ## Running The Server
 
@@ -154,49 +135,22 @@ Example MCP client configuration:
 
 ```json
 {
-  "mcpServers": {
-    "paper-search": {
-      "command": "uv",
-      "args": ["run", "paper-search-mcp"],
-      "cwd": "/home/tao/code/projects/paper-search-mcp"
-    }
-  }
-}
-```
-
-Example MCP client configuration using Docker instead of a local Python environment:
-
-```json
-{
-  "mcpServers": {
-    "paper-search": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-e",
-        "S2_API_KEY",
-        "-v",
-        "paper-search-cache:/root/.cache/paper-search-mcp",
-        "paper-search-mcp"
-      ]
-    }
-  }
-}
-```
-
-If you want to launch the module explicitly:
-
-```json
-{
-  "mcpServers": {
-    "paper-search": {
-      "command": "uv",
-      "args": ["run", "python", "-m", "paper_search_mcp.server"],
-      "cwd": "/home/tao/code/projects/paper-search-mcp"
-    }
-  }
+	"servers": {
+		"paper-search": {
+			"type": "stdio",
+			"command": "uv",
+			"args": [
+				"run",
+				"paper-search-mcp",
+				"-no-sync"
+			],
+			"cwd": "/home/tao/code/projects/paper-search-mcp",
+			"env": {
+				"S2_API_KEY": "${S2_API_KEY}"
+			}
+		}
+	},
+	"inputs": []
 }
 ```
 

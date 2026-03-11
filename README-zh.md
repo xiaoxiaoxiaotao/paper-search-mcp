@@ -96,32 +96,12 @@ export S2_API_KEY=your_key_here
 pip install .
 ```
 
-如果后续发布到 Git 仓库，也可以直接从仓库安装：
+从仓库安装：
 
 ```bash
 pip install https://github.com/xiaoxiaoxiaotao/paper-search-mcp.git
 ```
 
-如果以后发布到 PyPI，运行入口仍然是 `paper-search-mcp`。
-
-### 用 Docker 部署
-
-构建镜像：
-
-```bash
-docker build -t paper-search-mcp .
-```
-
-用 stdio 方式启动 MCP server：
-
-```bash
-docker run -i --rm \
-  -e S2_API_KEY=your_key_here \
-  -v paper-search-cache:/root/.cache/paper-search-mcp \
-  paper-search-mcp
-```
-
-这里的 volume 用来持久化 PDF 缓存，避免容器重启后重复下载。
 
 ## 运行
 
@@ -154,40 +134,7 @@ uv run paper-search-mcp
 }
 ```
 
-如果你希望 MCP Client 通过 Docker 启动，也可以这样配置：
 
-```json
-{
-  "mcpServers": {
-    "paper-search": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-e",
-        "S2_API_KEY",
-        "-v",
-        "paper-search-cache:/root/.cache/paper-search-mcp",
-        "paper-search-mcp"
-      ]
-    }
-  }
-}
-```
-
-如果你希望显式指定 Python：
-
-```json
-{
-  "mcpServers": {
-    "paper-search": {
-      "command": "uv",
-      "args": ["run", "python", "-m", "paper_search_mcp.server"]
-    }
-  }
-}
-```
 
 ## 设计说明
 
