@@ -109,6 +109,41 @@ Optional environment variables:
 - `PAPER_MCP_USER_AGENT`: Custom user agent string
 - `PAPER_MCP_CACHE_DIR`: Override the on-disk cache directory for downloaded PDFs
 
+### Install As A Python Package
+
+For local development or direct Python-based deployment:
+
+```bash
+pip install .
+```
+
+To install directly from a Git repository after you publish it:
+
+```bash
+pip install git+https://github.com/<your-org>/paper-search-mcp.git
+```
+
+If you publish to PyPI later, the runtime shape stays the same and the MCP entrypoint remains `paper-search-mcp`.
+
+### Deploy With Docker
+
+Build the image:
+
+```bash
+docker build -t paper-search-mcp .
+```
+
+Run the MCP server over stdio:
+
+```bash
+docker run -i --rm \
+  -e S2_API_KEY=your_key_here \
+  -v paper-search-cache:/root/.cache/paper-search-mcp \
+  paper-search-mcp
+```
+
+The volume mount keeps the PDF cache across container restarts.
+
 ## Running The Server
 
 Start the server directly:
@@ -126,6 +161,28 @@ Example MCP client configuration:
       "command": "uv",
       "args": ["run", "paper-search-mcp"],
       "cwd": "/home/tao/code/projects/paper-search-mcp"
+    }
+  }
+}
+```
+
+Example MCP client configuration using Docker instead of a local Python environment:
+
+```json
+{
+  "mcpServers": {
+    "paper-search": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "S2_API_KEY",
+        "-v",
+        "paper-search-cache:/root/.cache/paper-search-mcp",
+        "paper-search-mcp"
+      ]
     }
   }
 }
@@ -152,6 +209,7 @@ If you want to launch the module explicitly:
 - `build_literature_digest` reduces prompt assembly work for downstream agents.
 - `read_arxiv_paper` returns text and analysis prompts instead of hard-coded conclusions.
 - PDF downloads are cached on disk to avoid repeated arXiv fetches.
+- An npm package is possible as a thin wrapper, but the primary runtime is still Python or Docker.
 
 ## Possible Extensions
 
