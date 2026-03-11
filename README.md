@@ -1,101 +1,123 @@
 # paper-search-mcp
 
-一个面向 agent 的 MCP 服务，用来检索、读取和整理论文材料，方便后续做文献综述、对比分析和论文精读。
+paper-search-mcp is an MCP server for agents that need to search papers, read arXiv PDFs, align records across sources, and produce structured literature-analysis inputs.
 
-当前实现提供了两类核心能力：
+The server currently integrates two paper sources:
 
-- Semantic Scholar 检索与论文元数据读取
-- arXiv 检索、单篇元数据读取、PDF 正文抽取
+- Semantic Scholar for citation-aware discovery and metadata lookup
+- arXiv for recent papers, metadata lookup, and PDF text extraction
 
-另外提供了一个跨源聚合工具，用来快速生成适合 agent 后续分析的 literature digest。
+It also includes higher-level utilities for cross-source alignment, BibTeX export, and compact literature digests.
 
-## 提供的 MCP Tools
+Chinese documentation is available in `README-zh.md`.
+
+## MCP Tools
 
 ### `search_semantic_scholar`
 
-按查询词检索 Semantic Scholar，返回标准化后的论文列表，并按引用数降序排序。
+Search Semantic Scholar and return normalized paper metadata sorted by citation count.
 
-参数：
+Parameters:
 
-- `query`: 检索词
-- `max_results`: 返回上限，默认 `10`
+- `query`: Search query
+- `max_results`: Maximum number of results, default `10`
 
 ### `get_semantic_scholar_paper`
 
-按 `paper_id` 获取单篇论文详细元数据。
+Fetch detailed metadata for a Semantic Scholar paper by `paper_id`.
 
 ### `search_arxiv`
 
-按查询词检索 arXiv。
+Search arXiv and return normalized metadata.
 
-参数：
+Parameters:
 
-- `query`: 检索词
-- `max_results`: 返回上限，默认 `10`
-- `sort_by`: `relevance`、`lastUpdatedDate`、`submittedDate`
-- `sort_order`: `ascending` 或 `descending`
+- `query`: Search query
+- `max_results`: Maximum number of results, default `10`
+- `sort_by`: `relevance`, `lastUpdatedDate`, or `submittedDate`
+- `sort_order`: `ascending` or `descending`
 
 ### `get_arxiv_paper`
 
-按 arXiv ID、摘要页 URL 或 PDF URL 获取单篇论文元数据。
+Fetch metadata for one arXiv paper using an arXiv ID, abstract URL, or PDF URL.
 
 ### `read_arxiv_paper`
 
-下载 arXiv PDF，抽取前几页正文文本并返回结构化阅读材料。
+Download an arXiv PDF, cache it locally, extract text from the first pages, and return a structured reading pack.
 
-参数：
+Parameters:
 
-- `arxiv_id_or_url`: arXiv ID、摘要页 URL 或 PDF URL
-- `max_pages`: 抽取页数上限，默认 `8`
-- `max_characters`: 返回文本字符上限，默认 `20000`
+- `arxiv_id_or_url`: arXiv ID, abstract URL, or PDF URL
+- `max_pages`: Maximum number of pages to extract, default `8`
+- `max_characters`: Maximum number of extracted characters, default `20000`
+
+### `export_bibtex`
+
+Export a paper as BibTeX.
+
+Parameters:
+
+- `source`: `semantic_scholar` or `arxiv`
+- `identifier`: Semantic Scholar `paper_id` or arXiv ID/URL
+
+### `align_paper_by_title`
+
+Search Semantic Scholar and arXiv by title and return exact normalized title matches across both sources.
+
+Parameters:
+
+- `title`: Paper title used for exact title alignment
+- `semantic_scholar_max_results`: Search limit for Semantic Scholar, default `10`
+- `arxiv_max_results`: Search limit for arXiv, default `10`
 
 ### `build_literature_digest`
 
-跨 Semantic Scholar 和 arXiv 聚合检索、去重并返回一个简化版文献综述素材包。
+Search across Semantic Scholar and arXiv, deduplicate overlapping papers, and return a compact literature-analysis bundle.
 
-适合让 agent 后续执行：
+This is useful for downstream agent tasks such as:
 
-- 找经典工作与近期工作
-- 归纳方法路线
-- 对比数据集、指标和限制
+- finding classic work versus recent work
+- grouping methods into families
+- comparing datasets, metrics, and limitations
 
-## 安装
+## Installation
 
-推荐使用 `uv` 管理虚拟环境和依赖。
+This project is designed to use `uv` for environment and dependency management.
 
 ```bash
 uv sync
 ```
 
-这会在当前目录下创建 `.venv` 并安装项目依赖。
+This creates `.venv` in the project directory and installs the project dependencies.
 
-如果你希望带开发依赖一起装：
+To include development dependencies as well:
 
 ```bash
 uv sync --group dev
 ```
 
-如果你有 Semantic Scholar API Key，可以配置：
+If you have a Semantic Scholar API key:
 
 ```bash
 export S2_API_KEY=your_key_here
 ```
 
-可选环境变量：
+Optional environment variables:
 
 - `S2_API_KEY`: Semantic Scholar API key
-- `PAPER_MCP_HTTP_TIMEOUT`: HTTP 超时时间，默认 `30`
-- `PAPER_MCP_USER_AGENT`: 自定义 User-Agent
+- `PAPER_MCP_HTTP_TIMEOUT`: HTTP timeout in seconds, default `30`
+- `PAPER_MCP_USER_AGENT`: Custom user agent string
+- `PAPER_MCP_CACHE_DIR`: Override the on-disk cache directory for downloaded PDFs
 
-## 运行
+## Running The Server
 
-### 直接启动
+Start the server directly:
 
 ```bash
 uv run paper-search-mcp
 ```
 
-### MCP Client 配置示例
+Example MCP client configuration:
 
 ```json
 {
@@ -109,43 +131,31 @@ uv run paper-search-mcp
 }
 ```
 
-如果你希望显式指定 Python：
+If you want to launch the module explicitly:
 
 ```json
 {
   "mcpServers": {
     "paper-search": {
       "command": "uv",
-      "args": ["run", "python", "-m", "paper_search_mcp.server"]
-    }
-  }
-}
-```
-
-如果 MCP Client 需要固定到当前工作目录下的虚拟环境，也可以显式写成：
-
-```json
-{
-  "mcpServers": {
-    "paper-search": {
-      "command": "uv",
-      "args": ["run", "paper-search-mcp"],
+      "args": ["run", "python", "-m", "paper_search_mcp.server"],
       "cwd": "/home/tao/code/projects/paper-search-mcp"
     }
   }
 }
 ```
 
-## 设计说明
+## Notes
 
-- Semantic Scholar 适合找高引用、较成熟的相关工作
-- arXiv 适合抓近期论文和读取 PDF 正文
-- `build_literature_digest` 负责把两边结果合在一起，降低 agent 自己拼接上下文的成本
-- `read_arxiv_paper` 不直接做主观结论，而是返回文本和分析提示，避免把分析逻辑硬编码进工具里
+- Semantic Scholar is better for established, citation-rich papers.
+- arXiv is better for recent work and full-text PDF reading.
+- `build_literature_digest` reduces prompt assembly work for downstream agents.
+- `read_arxiv_paper` returns text and analysis prompts instead of hard-coded conclusions.
+- PDF downloads are cached on disk to avoid repeated arXiv fetches.
 
-## 后续可扩展方向
+## Possible Extensions
 
-- 支持 DOI / PMID / ACL Anthology / OpenAlex
-- 增加引用网络和相似论文检索
-- 增加 BibTeX 导出
-- 增加章节级 PDF 文本切分和缓存
+- DOI / PMID / ACL Anthology / OpenAlex support
+- citation graph and related-paper retrieval
+- richer section-aware PDF chunking
+- persistent metadata caching beyond PDFs
