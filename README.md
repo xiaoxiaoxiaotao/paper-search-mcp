@@ -117,11 +117,9 @@ For local development or direct Python-based deployment:
 pip install .
 ```
 
-To install directly from a Git repository after you publish it:
+To install directly from a Git repository:
 
-```bash
-pip install git+https://github.com/<your-org>/paper-search-mcp.git
-```
+
 
 If you publish to PyPI later, the runtime shape stays the same and the MCP entrypoint remains `paper-search-mcp`.
 
