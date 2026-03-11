@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import re
 import time
 import warnings
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from xml.etree import ElementTree
@@ -25,6 +27,12 @@ DEFAULT_TIMEOUT = float(os.getenv("PAPER_MCP_HTTP_TIMEOUT", "30"))
 DEFAULT_USER_AGENT = os.getenv(
     "PAPER_MCP_USER_AGENT",
     "paper-search-mcp/0.1.0 (+https://github.com/modelcontextprotocol)",
+)
+DEFAULT_CACHE_DIR = Path(
+    os.getenv(
+        "PAPER_MCP_CACHE_DIR",
+        Path(os.getenv("XDG_CACHE_HOME", Path.home() / ".cache")) / "paper-search-mcp",
+    )
 )
 
 ARXIV_NAMESPACES = {
@@ -66,6 +74,9 @@ class PaperService:
         self.semantic_scholar_api_key = os.getenv("S2_API_KEY")
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
+        self.cache_dir = DEFAULT_CACHE_DIR
+        self.pdf_cache_dir = self.cache_dir / "pdf"
+        self.pdf_cache_dir.mkdir(parents=True, exist_ok=True)
         if not self.semantic_scholar_api_key:
             warnings.warn(
                 "No Semantic Scholar API key found. Requests will be subject to stricter rate limits. "
@@ -170,6 +181,65 @@ class PaperService:
             raise ValueError(f"No arXiv paper found for identifier: {arxiv_id_or_url}")
         return papers[0].to_dict()
 
+    def export_bibtex(self, source: str, identifier: str) -> dict[str, Any]:
+        normalized_source = source.strip().lower()
+        if normalized_source not in {"semantic_scholar", "arxiv"}:
+            raise ValueError("source must be one of: semantic_scholar, arxiv")
+
+        if normalized_source == "semantic_scholar":
+            paper = self.get_semantic_scholar_paper(identifier)
+        else:
+            paper = self.get_arxiv_paper(identifier)
+
+        return {
+            "source": normalized_source,
+            "identifier": identifier,
+            "citation_key": self._build_citation_key(paper),
+            "bibtex": self._paper_to_bibtex(paper),
+            "paper": paper,
+        }
+
+    def align_paper_by_title(
+        self,
+        title: str,
+        semantic_scholar_max_results: int = 10,
+        arxiv_max_results: int = 10,
+    ) -> dict[str, Any]:
+        normalized_title = self._normalize_title(title)
+        if not normalized_title:
+            raise ValueError("title must not be empty")
+
+        semantic_payload = self.search_semantic_scholar(title, max_results=semantic_scholar_max_results)
+        arxiv_payload = self._search_arxiv_by_title(title, max_results=arxiv_max_results)
+
+        semantic_matches = [
+            paper for paper in semantic_payload["papers"] if self._normalize_title(paper["title"]) == normalized_title
+        ]
+        arxiv_matches = [
+            paper for paper in arxiv_payload["papers"] if self._normalize_title(paper["title"]) == normalized_title
+        ]
+
+        aligned_pairs: list[dict[str, Any]] = []
+        for semantic_paper in semantic_matches:
+            for arxiv_paper in arxiv_matches:
+                aligned_pairs.append(
+                    {
+                        "title": title,
+                        "semantic_scholar": semantic_paper,
+                        "arxiv": arxiv_paper,
+                        "same_arxiv_id": self._find_arxiv_id(self._paper_from_dict(semantic_paper)) == arxiv_paper["paper_id"],
+                    }
+                )
+
+        return {
+            "title": title,
+            "normalized_title": normalized_title,
+            "semantic_scholar_matches": semantic_matches,
+            "arxiv_matches": arxiv_matches,
+            "aligned_pairs": aligned_pairs,
+            "exact_match_found": bool(aligned_pairs),
+        }
+
     def read_arxiv_paper(
         self,
         arxiv_id_or_url: str,
@@ -181,8 +251,8 @@ class PaperService:
         if not pdf_url:
             raise ValueError(f"Paper does not expose a PDF URL: {arxiv_id_or_url}")
 
-        response = self._get(pdf_url)
-        pdf_reader = PdfReader(io.BytesIO(response.content))
+        pdf_content, cache_path, cache_hit = self._get_cached_pdf(pdf_url)
+        pdf_reader = PdfReader(io.BytesIO(pdf_content))
         extracted_pages: list[dict[str, Any]] = []
         chunks: list[str] = []
 
@@ -201,6 +271,11 @@ class PaperService:
             "page_stats": extracted_pages,
             "text": truncated_text,
             "truncated": len(combined_text) > len(truncated_text),
+            "cache": {
+                "enabled": True,
+                "pdf_cache_hit": cache_hit,
+                "pdf_cache_path": str(cache_path),
+            },
             "suggested_analysis_prompts": [
                 "Summarize the paper's research question, method, and main findings.",
                 "Identify assumptions, limitations, and potential failure modes.",
@@ -283,6 +358,25 @@ class PaperService:
             citation_count=raw.get("citationCount"),
             external_ids=external_ids or None,
         )
+
+    def _search_arxiv_by_title(self, title: str, max_results: int) -> dict[str, Any]:
+        response = self._get(
+            ARXIV_API_URL,
+            params={
+                "search_query": f'ti:"{title}"',
+                "start": 0,
+                "max_results": max_results,
+                "sortBy": "relevance",
+                "sortOrder": "descending",
+            },
+        )
+        papers = self._parse_arxiv_feed(response.text)
+        return {
+            "source": "arxiv",
+            "query": title,
+            "total": len(papers),
+            "papers": [paper.to_dict() for paper in papers],
+        }
 
     def _parse_arxiv_feed(self, xml_text: str) -> list[PaperRecord]:
         root = ElementTree.fromstring(xml_text)
@@ -371,7 +465,7 @@ class PaperService:
         arxiv_id = self._find_arxiv_id(paper)
         if arxiv_id:
             return f"arxiv:{arxiv_id}"
-        normalized = re.sub(r"\W+", "", paper.title.lower())
+        normalized = self._normalize_title(paper.title)
         return normalized or f"{paper.source}:{paper.paper_id}"
 
     def _find_arxiv_id(self, paper: PaperRecord) -> str | None:
@@ -390,6 +484,78 @@ class PaperService:
 
     def _clean_whitespace(self, text: str | None) -> str:
         return re.sub(r"\s+", " ", text or "").strip()
+
+    def _normalize_title(self, title: str | None) -> str:
+        return re.sub(r"\W+", "", (title or "").lower())
+
+    def _get_cached_pdf(self, pdf_url: str) -> tuple[bytes, Path, bool]:
+        cache_key = hashlib.sha256(pdf_url.encode("utf-8")).hexdigest()
+        cache_path = self.pdf_cache_dir / f"{cache_key}.pdf"
+
+        if cache_path.exists():
+            return cache_path.read_bytes(), cache_path, True
+
+        response = self._get(pdf_url)
+        cache_path.write_bytes(response.content)
+        return response.content, cache_path, False
+
+    def _build_citation_key(self, paper: dict[str, Any]) -> str:
+        authors = paper.get("authors") or []
+        first_author = authors[0] if authors else "unknown"
+        surname = re.sub(r"\W+", "", first_author.split()[-1].lower()) or "unknown"
+        year = str(paper.get("year") or "nd")
+        title_token = re.sub(r"\W+", "", (paper.get("title") or "paper").lower())[:24] or "paper"
+        return f"{surname}{year}{title_token}"
+
+    def _paper_to_bibtex(self, paper: dict[str, Any]) -> str:
+        citation_key = self._build_citation_key(paper)
+        authors = " and ".join(paper.get("authors") or ["Unknown"])
+        title = self._escape_bibtex_value(paper.get("title") or "Untitled")
+        year = paper.get("year") or ""
+        venue = self._escape_bibtex_value(paper.get("venue") or "")
+        url = self._escape_bibtex_value(paper.get("url") or "")
+        external_ids = paper.get("external_ids") or {}
+        doi = self._escape_bibtex_value(external_ids.get("DOI") or "")
+        arxiv_id = self._find_arxiv_id(self._paper_from_dict(paper))
+
+        fields = [
+            ("title", title),
+            ("author", self._escape_bibtex_value(authors)),
+            ("year", str(year)),
+        ]
+
+        entry_type = "article"
+        if paper.get("source") == "arxiv":
+            entry_type = "article"
+            fields.extend(
+                [
+                    ("journal", self._escape_bibtex_value(f"arXiv preprint arXiv:{paper['paper_id']}")),
+                    ("eprint", paper["paper_id"]),
+                    ("archivePrefix", "arXiv"),
+                ]
+            )
+            categories = paper.get("categories") or []
+            if categories:
+                fields.append(("primaryClass", categories[0]))
+        else:
+            if venue:
+                fields.append(("journal", venue))
+            else:
+                entry_type = "misc"
+
+        if doi:
+            fields.append(("doi", doi))
+        if arxiv_id and paper.get("source") != "arxiv":
+            fields.append(("eprint", arxiv_id))
+            fields.append(("archivePrefix", "arXiv"))
+        if url:
+            fields.append(("url", url))
+
+        rendered_fields = ",\n".join(f"  {key} = {{{value}}}" for key, value in fields if value)
+        return f"@{entry_type}{{{citation_key},\n{rendered_fields}\n}}"
+
+    def _escape_bibtex_value(self, value: str) -> str:
+        return value.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
 
 
 service = PaperService()
@@ -428,6 +594,26 @@ def search_arxiv(
 def get_arxiv_paper(arxiv_id_or_url: str) -> dict[str, Any]:
     """Fetch normalized metadata for a specific arXiv paper using an arXiv ID, abs URL, or PDF URL."""
     return service.get_arxiv_paper(arxiv_id_or_url=arxiv_id_or_url)
+
+
+@mcp.tool()
+def export_bibtex(source: str, identifier: str) -> dict[str, Any]:
+    """Export a paper as BibTeX using either a Semantic Scholar paper ID or an arXiv identifier/URL."""
+    return service.export_bibtex(source=source, identifier=identifier)
+
+
+@mcp.tool()
+def align_paper_by_title(
+    title: str,
+    semantic_scholar_max_results: int = 10,
+    arxiv_max_results: int = 10,
+) -> dict[str, Any]:
+    """Find exact title matches across Semantic Scholar and arXiv and return aligned cross-source pairs."""
+    return service.align_paper_by_title(
+        title=title,
+        semantic_scholar_max_results=semantic_scholar_max_results,
+        arxiv_max_results=arxiv_max_results,
+    )
 
 
 @mcp.tool()
