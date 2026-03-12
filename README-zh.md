@@ -121,18 +121,27 @@ uv run paper-search-mcp
 			"command": "uv",
 			"args": [
 				"run",
-				"paper-search-mcp",
-				"-no-sync"
+				"--no-sync",
+				"paper-search-mcp"
 			],
 			"cwd": "/home/tao/code/projects/paper-search-mcp",
 			"env": {
-				"S2_API_KEY": "${S2_API_KEY}"
+				"S2_API_KEY": "${input:s2-api-key}"
 			}
 		}
 	},
-	"inputs": []
+	"inputs": [
+		{
+			"type": "promptString",
+			"id": "s2-api-key",
+			"description": "Semantic Scholar API key",
+			"password": true
+		}
+	]
 }
 ```
+
+如果你不想使用输入框，也可以改用 `envFile`，并在对应文件里写入 `S2_API_KEY=your_key_here`。
 
 
 

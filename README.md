@@ -141,18 +141,27 @@ Example MCP client configuration:
 			"command": "uv",
 			"args": [
 				"run",
-				"paper-search-mcp",
-				"-no-sync"
+				"--no-sync",
+				"paper-search-mcp"
 			],
 			"cwd": "/home/tao/code/projects/paper-search-mcp",
 			"env": {
-				"S2_API_KEY": "${S2_API_KEY}"
+				"S2_API_KEY": "${input:s2-api-key}"
 			}
 		}
 	},
-	"inputs": []
+	"inputs": [
+		{
+			"type": "promptString",
+			"id": "s2-api-key",
+			"description": "Semantic Scholar API key",
+			"password": true
+		}
+	]
 }
 ```
+
+If you prefer not to use input prompts, configure `envFile` instead of `env` and place `S2_API_KEY=your_key_here` in that file.
 
 ## Notes
 
